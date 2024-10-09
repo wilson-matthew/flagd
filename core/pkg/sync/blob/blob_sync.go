@@ -11,6 +11,9 @@ import (
 	"github.com/open-feature/flagd/core/pkg/sync"
 	"gocloud.dev/blob"
 	_ "gocloud.dev/blob/gcsblob" // needed to initialize GCS driver
+	_ "gocloud.dev/blob/azureblob" // needed to initialize Azure Blob Storage driver
+	// okay to import both here and just have blob dir?
+	// does it matter that all blob/cloud packages get imported when only one will be used?
 )
 
 type Sync struct {

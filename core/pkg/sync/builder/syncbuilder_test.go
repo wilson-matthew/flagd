@@ -236,6 +236,10 @@ func Test_SyncsFromFromConfig(t *testing.T) {
 						URI:      "gs://bucket/path/to/file",
 						Provider: syncProviderGcs,
 					},
+					{
+						URI:      "azblob://container/path/to/file",
+						Provider: syncProviderAbs,
+					}
 				},
 			},
 			wantSyncs: []sync.ISync{
@@ -271,6 +275,8 @@ func Test_SyncsFromFromConfig(t *testing.T) {
 	}
 }
 
+// Duplicate this function so there's one each for gcs and abs?
+// Or just modify it so that it can be used to test any blob type?
 func Test_GcsConfig(t *testing.T) {
 	lg := logger.NewLogger(nil, false)
 	defaultInterval := uint32(5)

@@ -69,9 +69,14 @@ func ParseSyncProviderURIs(uris []string) ([]sync.SourceConfig, error) {
 				URI:      uri,
 				Provider: syncProviderGcs,
 			})
+		case regAbs.Match(uriB):
+			syncProvidersParsed = append(syncProvidersParsed, sync.SourceConfig{
+				URI:      uri,
+				Provider: syncProviderAbs,
+			})
 		default:
 			return syncProvidersParsed, fmt.Errorf("invalid sync uri argument: %s, must start with 'file:', "+
-				"'http(s)://', 'grpc(s)://', 'gs://' or 'core.openfeature.dev'", uri)
+				"'http(s)://', 'grpc(s)://', 'gs://', 'azblob://' or 'core.openfeature.dev'", uri)
 		}
 	}
 	return syncProvidersParsed, nil
