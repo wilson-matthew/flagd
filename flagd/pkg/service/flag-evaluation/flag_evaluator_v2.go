@@ -193,6 +193,10 @@ func (s *FlagEvaluationService) EventStream(
 			if err != nil {
 				s.logger.Error(err.Error())
 			}
+			// Exit cleanly after sending shutdown notification
+			if notification.Type == service.Shutdown {
+				return nil
+			}
 		case <-ctx.Done():
 			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 				s.logger.Debug(fmt.Sprintf("server-side deadline of %s exceeded, exiting stream request with grpc error code 4", s.deadline.String()))

@@ -45,7 +45,7 @@ which call the IEvaluator implementation.
 type IFlagEvaluationService interface {
 	Serve(ctx context.Context, svcConf Configuration) error
 	Notify(n Notification)
-	Shutdown()
+	Shutdown() <-chan struct{} // Returns completion channel for event-driven synchronization
 }
 
 /*

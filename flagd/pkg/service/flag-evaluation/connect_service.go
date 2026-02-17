@@ -107,7 +107,12 @@ func (s *ConnectService) Serve(ctx context.Context, svcConf service.Configuratio
 		s.serverMtx.RLock()
 		defer s.serverMtx.RUnlock()
 		if s.server != nil {
-			if err := s.server.Shutdown(gCtx); err != nil {
+			// Use fresh context with timeout for server shutdown to avoid inheriting
+			// the errgroup context, which may already be canceled or exhausted.
+			// This ensures the HTTP server has the full timeout period for graceful shutdown.
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			if err := s.server.Shutdown(shutdownCtx); err != nil {
 				return fmt.Errorf("error returned from flag evaluation server shutdown: %w", err)
 			}
 		}
@@ -118,7 +123,12 @@ func (s *ConnectService) Serve(ctx context.Context, svcConf service.Configuratio
 		s.metricsServerMtx.RLock()
 		defer s.metricsServerMtx.RUnlock()
 		if s.metricsServer != nil {
-			if err := s.metricsServer.Shutdown(gCtx); err != nil {
+			// Use fresh context with timeout for server shutdown to avoid inheriting
+			// the errgroup context, which may already be canceled or exhausted.
+			// This ensures the HTTP server has the full timeout period for graceful shutdown.
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			if err := s.metricsServer.Shutdown(shutdownCtx); err != nil {
 				return fmt.Errorf("error returned from metrics server shutdown: %w", err)
 			}
 		}
@@ -218,12 +228,9 @@ func (s *ConnectService) AddMiddleware(mw middleware.IMiddleware) {
 	s.server.Handler = mw.Handler(s.server.Handler)
 }
 
-func (s *ConnectService) Shutdown() {
+func (s *ConnectService) Shutdown() <-chan struct{} {
 	s.readinessEnabled = false
-	s.eventingConfiguration.EmitToAll(service.Notification{
-		Type: service.Shutdown,
-		Data: map[string]interface{}{},
-	})
+	return s.eventingConfiguration.Shutdown() // Returns completion channel
 }
 
 func (s *ConnectService) startServer(svcConf service.Configuration) error {

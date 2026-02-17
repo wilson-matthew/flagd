@@ -79,6 +79,7 @@ func (s syncHandler) SyncFlags(req *syncv1.SyncFlagsRequest, server syncv1grpc.F
 				s.log.Debug(fmt.Sprintf("server-side deadline of %s exceeded, exiting stream request with grpc error code 4", s.deadline.String()))
 				return status.Error(codes.DeadlineExceeded, "stream closed due to server-side timeout")
 			}
+			// During graceful shutdown, context cancellation is expected
 			s.log.Debug("context complete and exiting stream request")
 			return nil
 		}

@@ -41,10 +41,18 @@ func (r *Runtime) Start() error {
 	if r.Evaluator == nil {
 		return errors.New("no evaluator set")
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+
+	// Create operation context (NOT signal-bound) for two-phase shutdown
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// Separate signal handling for coordinated shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
 	g, gCtx := errgroup.WithContext(ctx)
 	dataSync := make(chan sync.DataSync, len(r.Syncs))
+
 	// Initialize DataSync channel watcher
 	g.Go(func() error {
 		for {
@@ -56,12 +64,14 @@ func (r *Runtime) Start() error {
 			}
 		}
 	})
+
 	// Init sync providers
 	for _, s := range r.Syncs {
 		if err := s.Init(gCtx); err != nil {
 			return fmt.Errorf("sync provider Init returned error: %w", err)
 		}
 	}
+
 	// Start sync provider
 	for _, s := range r.Syncs {
 		p := s
@@ -73,11 +83,23 @@ func (r *Runtime) Start() error {
 		})
 	}
 
-	defer func() {
-		r.Logger.Info("Shutting down server...")
-		r.EvaluationService.Shutdown()
-		r.Logger.Info("Server successfully shutdown.")
-	}()
+	// Shutdown coordinator goroutine - implements event-driven graceful shutdown
+	g.Go(func() error {
+		<-sigChan // Wait for shutdown signal
+
+		// PHASE 1: Send graceful shutdown notifications and get completion channel
+		r.Logger.Info("Initiating graceful shutdown...")
+		shutdownComplete := r.EvaluationService.Shutdown()
+
+		// PHASE 2: Wait for handlers to actually complete (or timeout)
+		r.Logger.Info("Waiting for active handlers to complete...")
+		<-shutdownComplete // Block until all handlers unsubscribed or timeout
+		r.Logger.Info("All handlers completed, canceling contexts")
+
+		// PHASE 3: Cancel contexts to trigger cleanup
+		cancel() // This triggers all goroutines to exit via gCtx.Done()
+		return nil
+	})
 
 	g.Go(func() error {
 		// Readiness probe rely on the runtime
@@ -109,6 +131,8 @@ func (r *Runtime) Start() error {
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("errgroup closed with error: %w", err)
 	}
+
+	r.Logger.Info("Server successfully shutdown.")
 	return nil
 }
 

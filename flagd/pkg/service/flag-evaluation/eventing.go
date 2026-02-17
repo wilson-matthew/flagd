@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/open-feature/flagd/core/pkg/logger"
 	"github.com/open-feature/flagd/core/pkg/model"
@@ -17,6 +18,7 @@ type IEvents interface {
 	Subscribe(ctx context.Context, id any, selector *store.Selector, notifyChan chan iservice.Notification)
 	Unsubscribe(id any)
 	EmitToAll(n iservice.Notification)
+	Shutdown() <-chan struct{}
 }
 
 var _ IEvents = &eventingConfiguration{}
@@ -27,6 +29,9 @@ type eventingConfiguration struct {
 	subs   map[any]chan iservice.Notification
 	store  store.IStore
 	logger *logger.Logger
+
+	// Shutdown synchronization
+	shutdownOnce sync.Once // Ensures Shutdown is only called once
 }
 
 func (eventing *eventingConfiguration) Subscribe(ctx context.Context, id any, selector *store.Selector, notifier chan iservice.Notification) {
@@ -80,4 +85,52 @@ func (eventing *eventingConfiguration) Unsubscribe(id any) {
 	defer eventing.mu.Unlock()
 
 	delete(eventing.subs, id)
+}
+
+// Shutdown sends shutdown notifications to all active handlers and returns a channel
+// that will be closed when all handlers have unsubscribed (or timeout occurs)
+func (e *eventingConfiguration) Shutdown() <-chan struct{} {
+	completeChan := make(chan struct{})
+
+	e.shutdownOnce.Do(func() {
+		// Emit shutdown notification to all active handlers
+		e.EmitToAll(iservice.Notification{
+			Type: iservice.Shutdown,
+			Data: map[string]interface{}{},
+		})
+
+		// Launch goroutine to monitor when all handlers have unsubscribed
+		go func() {
+			ticker := time.NewTicker(50 * time.Millisecond)
+			defer ticker.Stop()
+
+			timeout := time.After(2 * time.Second) // Fallback timeout
+
+			for {
+				select {
+				case <-ticker.C:
+					e.mu.RLock()
+					count := len(e.subs)
+					e.mu.RUnlock()
+
+					if count == 0 {
+						e.logger.Debug("All handlers have unsubscribed")
+						close(completeChan)
+						return
+					}
+					e.logger.Debug(fmt.Sprintf("Waiting for %d handlers to unsubscribe", count))
+
+				case <-timeout:
+					e.mu.RLock()
+					count := len(e.subs)
+					e.mu.RUnlock()
+					e.logger.Warn(fmt.Sprintf("Shutdown timeout: %d handlers still subscribed", count))
+					close(completeChan)
+					return
+				}
+			}
+		}()
+	})
+
+	return completeChan
 }

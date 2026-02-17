@@ -171,6 +171,10 @@ func (s *OldFlagEvaluationService) EventStream(
 			if err != nil {
 				s.logger.Error(err.Error())
 			}
+			// Exit cleanly after sending shutdown notification
+			if notification.Type == service.Shutdown {
+				return nil
+			}
 		case <-ctx.Done():
 			return nil
 		}

@@ -64,7 +64,9 @@ func (s *Server) Serve(ctx context.Context, svcConf service.Configuration) error
 	g.Go(func() error {
 		<-gCtx.Done()
 		if s.server != nil {
-			if err := s.server.Shutdown(gCtx); err != nil {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			if err := s.server.Shutdown(shutdownCtx); err != nil {
 				return fmt.Errorf("error shutting down flag evaluation server: %w", err)
 			}
 		}
@@ -73,7 +75,9 @@ func (s *Server) Serve(ctx context.Context, svcConf service.Configuration) error
 	g.Go(func() error {
 		<-gCtx.Done()
 		if s.metricsServer != nil {
-			if err := s.metricsServer.Shutdown(gCtx); err != nil {
+			shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer shutdownCancel()
+			if err := s.metricsServer.Shutdown(shutdownCtx); err != nil {
 				return fmt.Errorf("error shutting down metrics server: %w", err)
 			}
 		}
